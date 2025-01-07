@@ -1,12 +1,14 @@
 use std::fs;
 use std::env;
+use std::io;
+use std::io::Read;
 use reqwest;
 
 struct TwilioConfig {
-  TWILIO_ACCOUNT_SID: String,
-  TWILIO_AUTH_TOKEN: String,
-  TWILIO_NUMBER: String,
-  TO_NUMBER: String,
+  twilio_account_sid: String,
+  twilio_auth_token: String,
+  twilio_number: String,
+  to_number: String,
 }
 
 #[tokio::main]
@@ -14,9 +16,21 @@ async fn main() {
   let creds: TwilioConfig = load_twilio_configs();
 
   let client = reqwest::Client::new();
-  send_msg(&client, &creds, "Hello").await;
+  chat_loop(&client, &creds).await;
 
 }
+
+async fn chat_loop(client: &reqwest::Client, twilio: &TwilioConfig) {
+  loop {
+    let mut usr_msg = String::new();
+    io::stdin()
+      .read_line(&mut usr_msg)
+      .expect("Failed to read input");
+    send_msg(client, twilio, &usr_msg.trim()).await;
+    println!("{} (you): {}", twilio.twilio_number, usr_msg)
+  }
+}
+
 
 fn load_twilio_configs() -> TwilioConfig {
   let args = env::args().collect::<Vec<String>>();
@@ -35,10 +49,10 @@ fn load_twilio_configs() -> TwilioConfig {
   let twilio_number: String = lines[2].to_string();
 
   TwilioConfig {
-    TWILIO_ACCOUNT_SID: twilio_account_sid,
-    TWILIO_AUTH_TOKEN: twilio_auth_token,
-    TWILIO_NUMBER: twilio_number,
-    TO_NUMBER: to_number,
+    twilio_account_sid,
+    twilio_auth_token,
+    twilio_number,
+    to_number,
   }
 }
 
@@ -46,21 +60,21 @@ async fn send_msg(client: &reqwest::Client, twilio: &TwilioConfig, msg: &str) {
     // Construct the URL with the Account SID
     let url = format!(
         "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
-        twilio.TWILIO_ACCOUNT_SID
+        twilio.twilio_account_sid
     );
 
     // Prepare the form data
     let params = [
         ("Body", msg),
-        ("From", &twilio.TWILIO_NUMBER),
-        ("To", &twilio.TO_NUMBER),
+        ("From", &twilio.twilio_number),
+        ("To", &twilio.to_number),
     ];
 
     // Send the POST request
     let response = client
         .post(&url)
         .form(&params)
-        .basic_auth(&twilio.TWILIO_ACCOUNT_SID, Some(&twilio.TWILIO_AUTH_TOKEN))
+        .basic_auth(&twilio.twilio_account_sid, Some(&twilio.twilio_auth_token))
         .send()
         .await;
 
@@ -69,7 +83,7 @@ async fn send_msg(client: &reqwest::Client, twilio: &TwilioConfig, msg: &str) {
         Ok(resp) => {
             // Await the text asynchronously
             match resp.text().await {
-                Ok(text) => println!("Success: {}", text),
+                Ok(text) => (), //println!("Success: {}", text),
                 Err(e) => println!("Failed to read response text: {}", e),
             }
         }
