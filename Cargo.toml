@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 axum = "0.6"
+configparser = "3.1.0"
+homedir = "0.3.4"
+log = "0.4.25"
 ngrok = { version = "0.13.1", features = ["axum"] }
 reqwest = "0.12.12"
+simple-logging = "2.0.2"
 tokio = { version = "1", features = ["full"] }
