@@ -1,22 +1,22 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::{mpsc::Sender, Arc, Mutex}};
 
-use axum::{extract::Query, routing::get, Router};
+use axum::{extract::{Query, State}, routing::get, Router};
 use log::{error, info};
 use ngrok;
 use reqwest;
 
 use crate::TwilioConfig;
 
-pub async fn setup_listener(twilio_creds: TwilioConfig, ngrok_authtoken: String) {
+pub async fn setup_listener(twilio_creds: TwilioConfig, ngrok_authtoken: String, sender: Sender<(String, String)>) {
   let listener = get_ngrok_listener(ngrok_authtoken).await;
   let ngrok_url = ngrok::tunnel::UrlTunnel::url(&listener).to_owned();
   info!("Ngrok URL: {:?}", &ngrok_url);
   
   set_twilio_webhook(twilio_creds, &ngrok_url).await;
   info!("Set Ngrok endpoint as twilio webhook");
-  
-  let app: Router = Router::new().route("/", get(query));
-  if let Err(e) = axum::Server::builder(listener).serve(app.into_make_service()).await {
+  let arc_sender = Arc::new(Mutex::new(sender));
+  let axum_app: Router = Router::new().route("/", get(query_handler)).with_state(arc_sender);
+  if let Err(e) = axum::Server::builder(listener).serve(axum_app.into_make_service()).await {
     error!("Listener error: {e}");
     panic!();
   }
@@ -74,6 +74,11 @@ async fn get_ngrok_listener(ngrok_authtoken: String) -> ngrok::tunnel::HttpTunne
   listener
 }
 
-async fn query(Query(params): Query<HashMap<String, String>>) {
-  println!("{:?}: {:?}", params["From"], params["Body"]);
+async fn query_handler(State(arc_sender): State<Arc<Mutex<Sender<(String, String)>>>>, Query(params): Query<HashMap<String, String>>) {
+  let text = params["Body"].clone();
+  let number = params["From"].clone();
+  info!("Recieved text: {:?}: {:?}", &number, &text);
+  info!("Waiting for Mutex lock on App:");
+  let sender = arc_sender.lock().unwrap();
+  sender.send((text, number)).unwrap();
 }
